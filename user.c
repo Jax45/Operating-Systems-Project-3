@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <sys/msg.h>
-
+#include <stdbool.h>
 #define PERMS (IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
 void signalHandler(int sig);
@@ -34,7 +34,7 @@ int r_semop(int semid, struct sembuf *sops, int nsops) {
 
 struct Clock{
 	int second;
-	int nano;
+	long long int nano;
 };
 
 
@@ -48,13 +48,14 @@ struct mesg_buffer {
 } message;
 
 int main(int argc, char  **argv) {
+	srand(getpid());
 	signal(SIGABRT,signalHandler);	
 	struct sembuf semsignal[1];
 	struct sembuf semwait[1];
 	int error;	
 	//printf("Inside process: %ld\nsemid after: %d\n", (long)getpid(),atoi(argv[2]));
 	//get semaphore id	
-	
+	int shmid = atoi(argv[1]);	
 	int semid = atoi(argv[2]);
 	//int semid = semget(semKey, 1, PERMS);
         if(semid == -1){
@@ -65,19 +66,23 @@ int main(int argc, char  **argv) {
 	setsembuf(semwait, 0, -1, 0);
 	setsembuf(semsignal, 0, 1, 0);
 	
+	//get the random numbers
+	long long int ns = rand() % 1000000 + 1;
+	int sec;		
 	if ((error = r_semop(semid, semwait, 1)) == -1){
-		perror("Error: user: Child failed to lock semid. ");
-		return 1;
+		//uncomment this for debugging but it shows up after the parent alarm triggers.
+
+		//	perror("Error: user: Child failed to lock semid. ");
+		exit(1);
 	}
 	else if (!error) {
 		//inside critical section
-		int shmid = atoi(argv[1]);
 	        struct Clock *shmclock = (struct Clock*) shmat(shmid,(void*)0,0);
 	 //       printf("%d seconds and %d nanoseconds",shmclock->second,shmclock->nano);
-		int msgid = atoi(argv[3]);
-		message.mesg_type = 1;
-		//get the msg Id	        
-		sprintf(message.mesg_text, "%d:%d", shmclock->second, shmclock->nano);
+		ns += shmclock->nano;
+		sec = shmclock->second;
+		printf("\nentering loop, current ns: %lld, end ns: %lld\n",shmclock->nano,ns);
+	      
 	        shmdt(shmclock);
 	
 	
@@ -86,19 +91,44 @@ int main(int argc, char  **argv) {
 			printf("Failed to clean up");
 			return 1;
 		}
-		msgsnd(msgid, &message, sizeof(message), 0);
-                printf("Sending message back from %ld\n", (long)getpid());
-		return 0;
+        //        printf("Sending message back from %ld\n", (long)getpid());
+	
 	}
+	//printf("entering loop, current time: %d, end time: %d\n",n
+	int clockSec;
+	long long int clockNs;
+	bool timeElapsed = false;
+	while(!timeElapsed){
+		printf("%ld: still working...\n",getpid());
+		if ((error = r_semop(semid, semwait, 1)) == -1){
+	                perror("Error: user: Child failed to lock semid. ");
+	                return 1;
+	        }
+	        else if (!error) {
+		
+			//inside CS
+	                struct Clock *shmclock = (struct Clock*) shmat(shmid,(void*)0,0);
+			if(shmclock->nano >= ns || shmclock->second >= sec){
+				timeElapsed = true;
+				clockNs = shmclock->nano;
+				clockSec = shmclock->second;
+			}
+			printf("\nGot this from shmclock: %d, %d, bool: %d\n",clockSec,clockNs,timeElapsed);
+			shmdt(shmclock);
+
+			//exit CS
+	                if ((error = r_semop(semid, semsignal, 1)) == -1) {
+	                        printf("Failed to clean up");
+       		                return 1;
+                	}
+
+		}
+	}
+	//send message
+	int msgid = atoi(argv[3]);
+        message.mesg_type = 1;
+        sprintf(message.mesg_text, "%d:%lld", clockSec, clockNs);
+        msgsnd(msgid, &message, sizeof(message), 0);
+
 	return 0;
 }	
-/*	sem_wait(&mutex);
-	int shmid = atoi(argv[1]);
-        struct Clock *shmclock = (struct Clock*) shmat(shmid,(void*)0,0);
-        printf("%d seconds and %d nanoseconds",shmclock->second,shmclock->nano);
-	shmclock->second += 1;
-        shmclock->nano += 10;
-        shmdt(shmclock);
-	//exit(0);
-	return 0;
-}*/

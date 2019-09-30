@@ -4,7 +4,7 @@ TARGET		= oss
 OBJECTS		= oss.o
 CHILD		= user
 CHILDOBJS	= user.o
-
+LOG		= log.txt
 .SUFFIXES: .c .o
 
 ALL: oss user
@@ -21,3 +21,4 @@ $(CHILD): $(CHILDOBJS)
 .PHONY: clean
 clean:
 	/bin/rm -f *.o $(TARGET) $(CHILD)
+	/bin/rm $(LOG)

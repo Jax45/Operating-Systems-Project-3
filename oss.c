@@ -72,7 +72,7 @@ void timerHandler(int sig){
 	//kill the children
 	int i = 0;
         for(i = 0; i < maxChildren; i++) {
-                kill(pidArray[i],SIGKILL);
+                kill(pidArray[i],SIGABRT);
         }
 
 	exitSafe(1);
@@ -94,7 +94,7 @@ void maxProcesses(){
 	printf("You have hit the maximum number of processes of 100, killing remaining processes and terminating.\n");
 	int i = 0;	
 	for(i = 0; i < maxChildren; i++) {
-		//kill(pidArray[i],SIGKILL);
+		kill(pidArray[i],SIGABRT);
 		waitpid(pidArray[i],0,0);
 	}
 	/*for(i = 0; i < maxChildren; i++) {
@@ -106,7 +106,7 @@ void maxProcesses(){
 
 struct Clock{
 	int second;
-	int nano;
+	long long int nano;
 };
 
 struct mesg_buffer {
@@ -203,15 +203,13 @@ int main(int argc, char **argv){
 	}
 	
 	//open logfile
-	//FILE* clean = fopen(logFile, "w");
-	//fclose(clean);
 	FILE *fp;
 	fp = fopen(logFile, "a");
 	
 	
 	int i = 0;
 	for(i = 0; i < maxChildren; i++){
-		//printf("fork %d\n",i+1);
+		printf("fork %d\n",i+1);
 		pidArray[i] = fork();
 		
 		if(pidArray[i] == -1 || errno){
@@ -238,11 +236,11 @@ int main(int argc, char **argv){
 	int processes = maxChildren;
 	while(1){
 
-	//local variable to hold current time
-	int ns;
-	int sec;
-
-	//increment the clock
+		//local variable to hold current time
+		long long int ns;
+		int sec;
+	
+		//increment the clock
 		
 		//get cs
 		if (r_semop(semid, semwait, 1) == -1){
@@ -251,9 +249,20 @@ int main(int argc, char **argv){
 		}
 		else {
 			shmclock = (struct Clock*) shmat(shmid, (void*)0,0);
-			ns = shmclock->nano + 1;
+				
+			if(shmclock->nano >= 1000000){
+				shmclock->second += shmclock->nano / 1000000;
+				shmclock->nano = shmclock->nano % 1000000 + 1;
+                	}
+			else{
+		        	shmclock->nano += 1;
+			}
+		
+			//shmclock->second += 1;
+			//shmclock->nano += 100000;
+			ns = shmclock->nano;
 			sec = shmclock->second;
-			shmclock->nano += 1;
+			//printf("OSS: second %d, nano %lld\n",sec,ns);
 			shmdt(shmclock);
 			//exit CS
 			if (r_semop(semid, semsignal, 1) == -1) {
@@ -261,11 +270,12 @@ int main(int argc, char **argv){
 				exitSafe(1);
 			}
 		}
-
 		int stat = 0;	
 		pid_t childPid;
-		if (msgrcv(msgid, &message, sizeof(message), 1, MSG_NOERROR | IPC_NOWAIT) != -1){
-                	//printf("received message: %s\n",message.mesg_text);
+		//printf(" Out of CS in Master");
+		if (msgrcv(msgid, &message, sizeof(message), 1, IPC_NOWAIT) != -1){
+                	
+			printf("received message: %s\n",message.mesg_text);
                         fprintf(fp,"MASTER: Child pid is terminating at my time %d.%d because it reached %s in child process\n",sec,ns,message.mesg_text);
                 
                
@@ -302,6 +312,7 @@ int main(int argc, char **argv){
 	        else if(errno == ENOMSG){
                 	//we did not receive a message
 			errno = 0;
+			//printf("No message");
                 }
 
 	}
