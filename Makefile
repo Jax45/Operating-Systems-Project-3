@@ -2,20 +2,20 @@ CC		= gcc
 CFLAGS		= -g
 TARGET		= oss
 OBJECTS		= oss.o
-CHILD		= child
-CHILDOBJS	= child.o
+CHILD		= user
+CHILDOBJS	= user.o
 
 .SUFFIXES: .c .o
 
-ALL: oss child
+ALL: oss user
 
 $(TARGET): $(OBJECTS)
 	$(CC) -Wall -o $@ $(OBJECTS)
 
 $(CHILD): $(CHILDOBJS)
-	$(CC) -Wall -o $@ child.o
+	$(CC) -Wall -o $@ $(CHILDOBJS)
 
-.c.o: oss.c child.c
+.c.o: oss.c user.c
 	$(CC) -Wall $(CFLAGS) -c $<
 
 .PHONY: clean
