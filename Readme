@@ -1,0 +1,44 @@
+Name: Jackson Hoenig
+Class: CMP-SCI 4760-001
+
+Description: 
+-------------------------------------------------------------------------
+This program is meant to simulate an Operating System with
+many child programs that run for a random amount of time
+and terminate. The parent process will make sure only so many
+"users" can be on the os at a time. once one terminates another is
+forked off to take its place. Each child process is called "user"
+and the parent process is called "oss" the options for running oss
+are: -s (specify the max number of child processes running at any time
+-default is 5)  -t (specify the time in seconds before the timeout-default=5)
+-l (specify the logfile name-default="log.txt"). 
+This program keeps track of time using a shared memory "clock" struct
+that is protected by a semaphore and accessed in both the parent and child
+processes. when a child has determined it has ran long enough according to 
+the shared memory clock it sends a message queue to the parent process
+and terminates.
+--------------------------------------------------------------------------
+
+Ending situations:
+---------------------------------------------------------------------------
+1. The program runs for the specified timeout time, terminates all out-
+    standing children, closes and deletes IPC data, then exits.
+2. The program spawns 100 processes, terminates all outstanding
+    children processes and closes and deletes IPC data, then exits
+3. The program goes through 2 seconds of logical clock time in the shared
+    memory clock. then again the parent process "oss" will kill all outstanding
+    children and close/delete IPC data and exit.
+----------------------------------------------------------------------------- 
+
+How to run:
+
+-----------------------------------------------------------------------------
+$ make clean
+$ make
+$ ./oss [-stl]
+     [-s Max Children Spawned Simultaneously]
+     [-t Time in Seconds before timeout]
+     [-l Name of logfile]
+-----------------------------------------------------------------------------
+
+

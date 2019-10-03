@@ -1,3 +1,14 @@
+//Name: Jackson Hoenig
+//Class: CMP-SCI 4760
+//Description: This is the child process of the parent program oss.c
+//please check that one for details on the whole project. this program is not
+//designed to be called on its own.
+//This program takes in 3 arguments, the shared memory id, semaphore id, and the message queue id.
+//witht that data the program tries to access the shared memory through the semaphore given.
+//when it gets the SHM, it checks the clock and calculates a random time to add to the ns that it will end
+//then it releases shared memory and checks until that time has passed on that shm clock.
+//then sends the data in a message queue to the parent process. and terminates.
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -12,15 +23,17 @@
 #include <stdbool.h>
 #define PERMS (IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
+//prototype for signalhandler
 void signalHandler(int sig);
 
+//used to create semSignal and semWait.
 void setsembuf(struct sembuf *s, int num, int op, int flg) {
         s->sem_num = (short)num;
         s->sem_op = (short)op;
         s->sem_flg = (short)flg;
         return;
 }
-
+//function to run the semaphore functions set with setsembuf.
 int r_semop(int semid, struct sembuf *sops, int nsops) {
         signal(SIGKILL,signalHandler);
 	while(semop(semid, sops, nsops) == -1){
@@ -31,17 +44,17 @@ int r_semop(int semid, struct sembuf *sops, int nsops) {
         return 0;
 }
 
-
+//shared memory clock
 struct Clock{
 	int second;
 	long long int nano;
 };
 
-
+//signal handler
 void signalHandler(int sig){
 	exit(1);
 }
-
+//message queue struct buffer.
 struct mesg_buffer {
 	long mesg_type;
 	char mesg_text[100];
@@ -70,18 +83,14 @@ int main(int argc, char  **argv) {
 	long long int ns = rand() % 1000000 + 1;
 	int sec;		
 	if ((error = r_semop(semid, semwait, 1)) == -1){
-		//uncomment this for debugging but it shows up after the parent alarm triggers.
-
-		//	perror("Error: user: Child failed to lock semid. ");
+		perror("Error: user: Child failed to lock semid. ");
 		exit(1);
 	}
 	else if (!error) {
 		//inside critical section
 	        struct Clock *shmclock = (struct Clock*) shmat(shmid,(void*)0,0);
-	 //       printf("%d seconds and %d nanoseconds",shmclock->second,shmclock->nano);
 		ns += shmclock->nano;
 		sec = shmclock->second;
-		printf("\nentering loop, current ns: %lld, end ns: %lld\n",shmclock->nano,ns);
 	      
 	        shmdt(shmclock);
 	
@@ -91,29 +100,35 @@ int main(int argc, char  **argv) {
 			printf("Failed to clean up");
 			return 1;
 		}
-        //        printf("Sending message back from %ld\n", (long)getpid());
 	
 	}
-	//printf("entering loop, current time: %d, end time: %d\n",n
-	int clockSec;
-	long long int clockNs;
+	//use these if you want to display the clock time in the message.
+	//int clockSec;
+	//long long int clockNs;
+	
+	//Make sure we convert the nanoseconds to seconds if big enough
+	if( ns >= 1000000000){
+		sec += ns % 1000000000;
+		ns = ns / 1000000000;
+	}
+//	printf("Waiting for logical time: %d:%lld",sec,ns);
 	bool timeElapsed = false;
 	while(!timeElapsed){
-		printf("%ld: still working...\n",getpid());
 		if ((error = r_semop(semid, semwait, 1)) == -1){
-	                perror("Error: user: Child failed to lock semid. ");
+			perror("Error: user: Child failed to lock semid. ");
 	                return 1;
 	        }
 	        else if (!error) {
 		
 			//inside CS
 	                struct Clock *shmclock = (struct Clock*) shmat(shmid,(void*)0,0);
-			if(shmclock->nano >= ns || shmclock->second >= sec){
+			if((shmclock->nano >= ns && shmclock->second == sec) || shmclock->second > sec){
 				timeElapsed = true;
-				clockNs = shmclock->nano;
-				clockSec = shmclock->second;
+				//display these if we should send back the clock end time instead of our 
+				//calculated end time.
+				//clockNs = shmclock->nano;
+				//clockSec = shmclock->second;
 			}
-			printf("\nGot this from shmclock: %d, %d, bool: %d\n",clockSec,clockNs,timeElapsed);
 			shmdt(shmclock);
 
 			//exit CS
@@ -127,7 +142,8 @@ int main(int argc, char  **argv) {
 	//send message
 	int msgid = atoi(argv[3]);
         message.mesg_type = 1;
-        sprintf(message.mesg_text, "%d:%lld", clockSec, clockNs);
+        //send back what time you calculated to end on.
+	sprintf(message.mesg_text, "%d:%lld", sec, ns);
         msgsnd(msgid, &message, sizeof(message), 0);
 
 	return 0;
